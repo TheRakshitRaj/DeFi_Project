@@ -106,6 +106,60 @@ contract Vault is Ownable, ReentrancyGuard {
         );
     }
 
+    /// @notice Write a covered call with an AI-recommended strike price
+    /// @param aiStrikePrice Strike price in USD with 8 decimals (e.g. 327500000000 = $3275)
+    /// @param expiryDuration Seconds until option expires
+    function writeCoveredCallWithStrike(
+        uint256 aiStrikePrice,
+        uint256 expiryDuration
+    ) external onlyOwner {
+        require(totalDeposits > 0, "No deposits");
+        require(aiStrikePrice > 0, "Invalid strike price");
+
+        // Validate: AI strike must be at least 2% above current market price
+        int256 currentPrice = strategyManager.getLatestPrice();
+        require(currentPrice > 0, "Invalid oracle price");
+        uint256 minStrike = (uint256(currentPrice) * 102) / 100;
+        require(aiStrikePrice >= minStrike, "Strike too close to market price");
+
+        uint256 expiryTimestamp = block.timestamp + expiryDuration;
+        uint256 collateralRatio = strategyManager.calculateCollateralRatio();
+
+        MockOptionToken optionToken = new MockOptionToken(
+            "ETH AI Call",
+            "EAIC",
+            aiStrikePrice,
+            expiryTimestamp
+        );
+
+        uint256 collateralToLock = (totalDeposits * collateralRatio) / 100;
+        if (collateralToLock > address(this).balance) {
+            collateralToLock = address(this).balance;
+        }
+
+        uint256 tokensToMint = collateralToLock / 1e16;
+        optionToken.mint(address(this), tokensToMint);
+
+        optionCycles.push(
+            OptionCycle({
+                optionTokenAddress: address(optionToken),
+                strikePrice: aiStrikePrice,
+                collateralLocked: collateralToLock,
+                premiumCollected: 0,
+                expiry: expiryTimestamp,
+                settled: false
+            })
+        );
+
+        activeCycleIndex = optionCycles.length - 1;
+        emit OptionWritten(
+            activeCycleIndex,
+            aiStrikePrice,
+            expiryTimestamp,
+            collateralToLock
+        );
+    }
+
     function collectPremium(uint256 cycleIndex) external payable {
         require(cycleIndex < optionCycles.length, "Invalid cycle");
         require(!optionCycles[cycleIndex].settled, "Already settled");
