@@ -22,3 +22,10 @@ backtesting/build/
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+ai-strategy/venv/
+__pycache__/
+*.pyc
+*.pkl
+ai-strategy/data/eth_prices.csv
