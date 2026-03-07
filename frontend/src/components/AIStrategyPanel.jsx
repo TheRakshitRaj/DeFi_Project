@@ -37,12 +37,12 @@ const RiskBadge = ({ level }) => {
     );
 };
 
-export default function AIStrategyPanel({ currentPrice, strategyData }) {
+export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUpdate }) {
     // Derive volatility from strategy data collateral ratio as a proxy
     // In a real system this would come from a rolling std calculation
     const volatility = strategyData?.isHighVol ? 0.055 : 0.025;
 
-    const { aiData, refetch } = useAIStrategy(currentPrice, volatility);
+    const { aiData, refetch } = useAIStrategy(currentPrice, volatility, onStrikeUpdate);
     const [txStatus, setTxStatus] = useState(null);
     const [applying, setApplying] = useState(false);
 
