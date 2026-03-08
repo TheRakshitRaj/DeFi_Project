@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAIStrategy } from "../hooks/useAIStrategy";
 import { getVaultContract } from "../utils/contractHelpers";
 import { ethers } from "ethers";
@@ -37,14 +37,22 @@ const RiskBadge = ({ level }) => {
     );
 };
 
-export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUpdate }) {
+export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUpdate, onPriceUpdate }) {
     // Derive volatility from strategy data collateral ratio as a proxy
-    // In a real system this would come from a rolling std calculation
     const volatility = strategyData?.isHighVol ? 0.055 : 0.025;
 
     const { aiData, refetch } = useAIStrategy(currentPrice, volatility, onStrikeUpdate);
+    // Use live price from Binance (wallet-independent) or fall back to prop
+    const displayPrice = aiData.livePrice || currentPrice;
     const [txStatus, setTxStatus] = useState(null);
     const [applying, setApplying] = useState(false);
+
+    // Push live Binance price up to parent for StrategyMonitor
+    useEffect(() => {
+        if (onPriceUpdate && aiData.livePrice) {
+            onPriceUpdate(aiData.livePrice);
+        }
+    }, [aiData.livePrice, onPriceUpdate]);
 
     // Send the AI-recommended strike to the smart contract
     const applyToContract = async () => {
@@ -86,12 +94,15 @@ export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUp
             </div>
 
             {/* Offline state */}
-            {!aiData.serviceOnline && (
+            {!aiData.serviceOnline && !aiData.loading && (
                 <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-4 mb-4">
                     <p className="text-red-400 text-sm font-semibold mb-1">AI Service Not Running</p>
                     <p className="text-gray-400 text-xs">Start the Python API to enable AI recommendations:</p>
                     <code className="block text-xs text-vault-yellow mt-2 bg-vault-bg p-2 rounded">
+                        <span className="block text-gray-400 mb-1"># Mac/Linux:</span>
                         cd ai-strategy && source venv/bin/activate && python3 api.py
+                        <span className="block text-gray-400 mt-2 mb-1"># Windows:</span>
+                        cd ai-strategy && .\venv\Scripts\activate && python api.py
                     </code>
                     <button onClick={refetch} className="mt-3 text-xs text-vault-accent hover:underline">
                         Retry connection →
@@ -113,8 +124,8 @@ export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUp
                     {/* Input summary */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
                         <div className="bg-vault-bg border border-vault-border rounded-lg p-3">
-                            <p className="text-xs text-gray-500 mb-1">Current ETH Price</p>
-                            <p className="text-lg font-bold text-vault-accent">${Number(currentPrice).toLocaleString()}</p>
+                            <p className="text-xs text-gray-500 mb-1">Current ETH Price <span className="text-gray-600">(Binance)</span></p>
+                            <p className="text-lg font-bold text-vault-accent">${Number(displayPrice).toLocaleString()}</p>
                         </div>
                         <div className="bg-vault-bg border border-vault-border rounded-lg p-3">
                             <p className="text-xs text-gray-500 mb-1">Market Volatility</p>
@@ -141,8 +152,8 @@ export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUp
                             <span className="text-gray-400">
                                 vs rule-based: <span className="text-vault-yellow font-semibold">
                                     ${strategyData?.isHighVol
-                                        ? (Number(currentPrice) * 1.20).toFixed(0)
-                                        : (Number(currentPrice) * 1.10).toFixed(0)}
+                                        ? (Number(displayPrice) * 1.20).toFixed(0)
+                                        : (Number(displayPrice) * 1.10).toFixed(0)}
                                 </span>
                             </span>
                         </div>

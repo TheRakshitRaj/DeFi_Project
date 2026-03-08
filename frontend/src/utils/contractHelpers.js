@@ -3,13 +3,21 @@ import VaultABI from "../abis/Vault.json";
 import StrategyABI from "../abis/StrategyManager.json";
 import addresses from "../abis/addresses.json";
 
+const HARDHAT_RPC = "http://127.0.0.1:8545";
+
+// Read-only provider: uses MetaMask if available, otherwise falls back to Hardhat RPC
 export const getProvider = () => {
-    if (!window.ethereum) throw new Error("MetaMask not found");
-    return new ethers.providers.Web3Provider(window.ethereum);
+    if (window.ethereum) {
+        return new ethers.providers.Web3Provider(window.ethereum);
+    }
+    // Fallback: connect directly to the Hardhat node for read-only operations
+    return new ethers.providers.JsonRpcProvider(HARDHAT_RPC);
 };
 
+// Signer: always requires MetaMask — used only for transactions
 export const getSigner = async () => {
-    const p = getProvider();
+    if (!window.ethereum) throw new Error("MetaMask not found. Connect your wallet to make transactions.");
+    const p = new ethers.providers.Web3Provider(window.ethereum);
     await p.send("eth_requestAccounts", []);
     return p.getSigner();
 };

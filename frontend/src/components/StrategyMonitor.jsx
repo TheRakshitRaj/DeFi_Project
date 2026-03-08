@@ -191,9 +191,12 @@ const PriceChart = ({ priceHistory, stats }) => {
 // Main Component
 // ─────────────────────────────────────────────────────
 
-export default function StrategyMonitor({ strategyData, aiRecommendedStrike }) {
+export default function StrategyMonitor({ strategyData, aiRecommendedStrike, binancePrice }) {
     const { currentPrice, strikePrice, collateralRatio, isHighVol } = strategyData;
-    const { priceHistory, stats } = usePriceHistory(currentPrice);
+    // Use contract price if valid, otherwise fall back to Binance live price
+    const contractPrice = parseFloat(currentPrice);
+    const effectivePrice = contractPrice > 100 ? currentPrice : (binancePrice ? String(binancePrice) : currentPrice);
+    const { priceHistory, stats } = usePriceHistory(effectivePrice);
 
     // Multiplier info
     const multiplierText = isHighVol ? "+20%" : "+10%";
@@ -201,7 +204,7 @@ export default function StrategyMonitor({ strategyData, aiRecommendedStrike }) {
     const collateralText = isHighVol ? "150%" : "110%";
 
     // Live source indicator
-    const priceNum = parseFloat(currentPrice);
+    const priceNum = parseFloat(effectivePrice);
     const isValidPrice = priceNum > 100; // sanity check
 
     return (
@@ -292,7 +295,7 @@ export default function StrategyMonitor({ strategyData, aiRecommendedStrike }) {
             <StrikeComparison
                 ruleBased={strikePrice}
                 aiStrike={aiRecommendedStrike}
-                currentPrice={currentPrice}
+                currentPrice={effectivePrice}
             />
 
             {/* ── Footer note ── */}

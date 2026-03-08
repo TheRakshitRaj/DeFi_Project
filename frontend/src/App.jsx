@@ -5,16 +5,20 @@ import StrategyMonitor from "./components/StrategyMonitor";
 import BacktestPanel from "./components/BacktestPanel";
 import AIStrategyPanel from "./components/AIStrategyPanel";
 import { useVault } from "./hooks/useVault";
-import { getProvider } from "./utils/contractHelpers";
 
 export default function App() {
     const [account, setAccount] = useState(null);
-    const [aiStrike, setAiStrike] = useState(null); // shared state
+    const [aiStrike, setAiStrike] = useState(null);
+    const [binancePrice, setBinancePrice] = useState(null);
     const { vault, strategy, loading, deposit, withdraw } = useVault(account);
 
     const connect = async () => {
         try {
-            const p = getProvider();
+            if (!window.ethereum) {
+                alert("MetaMask not found. Install MetaMask to connect your wallet.");
+                return;
+            }
+            const p = new (await import("ethers")).ethers.providers.Web3Provider(window.ethereum);
             const accs = await p.send("eth_requestAccounts", []);
             setAccount(accs[0]);
         } catch (e) {
@@ -63,17 +67,19 @@ export default function App() {
                 />
                 <VaultDashboard vaultData={vault} />
 
-                {/* Strategy Monitor gets aiStrike from shared state */}
+                {/* Strategy Monitor gets aiStrike + binancePrice from shared state */}
                 <StrategyMonitor
                     strategyData={strategy}
                     aiRecommendedStrike={aiStrike}
+                    binancePrice={binancePrice}
                 />
 
-                {/* AI Panel sets the shared aiStrike state when it gets a prediction */}
+                {/* AI Panel sets the shared aiStrike + binancePrice state */}
                 <AIStrategyPanel
                     currentPrice={strategy.currentPrice}
                     strategyData={strategy}
                     onStrikeUpdate={(strike) => setAiStrike(strike)}
+                    onPriceUpdate={(price) => setBinancePrice(price)}
                 />
 
                 <div className="md:col-span-2 xl:col-span-3">
