@@ -1,305 +1,131 @@
+import { useRef } from "react";
+import { useCardHover } from "../App";
 import { usePriceHistory } from "../hooks/usePriceHistory";
-import {
-    AreaChart,
-    Area,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-// ─────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────
-
-const VolatilityBadge = ({ isHighVol }) => (
-    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border
-    ${isHighVol
-            ? "bg-red-900/30 text-red-400 border-red-700/40"
-            : "bg-green-900/30 text-green-400 border-green-700/40"
-        }`}>
-        <span className={`w-2 h-2 rounded-full animate-pulse
-      ${isHighVol ? "bg-red-400" : "bg-green-400"}`}
-        />
-        {isHighVol ? "HIGH VOLATILITY" : "LOW VOLATILITY"}
-    </div>
-);
-
-const DataRow = ({ label, value, valueColor = "text-white", badge = null, sublabel = null }) => (
-    <div className="flex justify-between items-center py-2.5 border-b border-vault-border last:border-0">
+const DataRow = ({ label, value, color, badge, sub }) => (
+    <div className="data-row">
         <div>
-            <span className="text-gray-400 text-sm">{label}</span>
-            {sublabel && (
-                <p className="text-xs text-gray-600 mt-0.5">{sublabel}</p>
-            )}
+            <span style={{ fontSize: 12, color: "#9b8677", fontFamily: "'DM Sans', sans-serif" }}>{label}</span>
+            {sub && <p style={{ fontSize: 10, color: "#c4b5a8", marginTop: 1, fontFamily: "'DM Sans', sans-serif" }}>{sub}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             {badge}
-            <span className={`font-bold text-sm ${valueColor}`}>{value}</span>
+            <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", fontWeight: 500, color: color || "#1e0e04" }}>{value}</span>
         </div>
     </div>
 );
 
-const StrikeComparison = ({ ruleBased, aiStrike, currentPrice }) => {
-    if (!ruleBased || !currentPrice) return null;
-
-    const ruleNum = parseFloat(ruleBased);
-    const aiNum = parseFloat(aiStrike);
-    const priceNum = parseFloat(currentPrice);
-
-    const ruleAbove = ruleNum > 0 ? (((ruleNum - priceNum) / priceNum) * 100).toFixed(1) : "—";
-    const aiAbove = aiNum > 0 ? (((aiNum - priceNum) / priceNum) * 100).toFixed(1) : "—";
-
-    const aiIsBetter = aiNum > 0 && Math.abs(aiNum - priceNum) > Math.abs(ruleNum - priceNum);
-
+const ChartTip = ({ active, payload, chartColor }) => {
+    if (!active || !payload?.length) return null;
     return (
-        <div className="mt-3 p-3 bg-vault-bg rounded-lg border border-vault-border">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-3 font-semibold">
-                Strike Comparison
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-                {/* Rule-Based */}
-                <div className="bg-yellow-900/10 border border-yellow-700/20 rounded-lg p-2.5 text-center">
-                    <p className="text-xs text-gray-500 mb-1">Rule-Based</p>
-                    <p className="text-base font-bold text-yellow-400">${ruleNum.toLocaleString()}</p>
-                    <p className="text-xs text-gray-500 mt-1">+{ruleAbove}% above</p>
-                    <div className="mt-1.5 text-xs bg-yellow-900/20 rounded px-1.5 py-0.5 text-yellow-500">
-                        Fixed Formula
-                    </div>
-                </div>
-
-                {/* AI Strike */}
-                <div className={`border rounded-lg p-2.5 text-center relative
-          ${aiNum > 0
-                        ? "bg-blue-900/10 border-blue-700/20"
-                        : "bg-gray-900/20 border-gray-700/20"
-                    }`}>
-                    {aiIsBetter && aiNum > 0 && (
-                        <div className="absolute -top-2 left-1/2 transform -translate-x-1/2
-              bg-vault-accent text-vault-bg text-xs px-2 py-0.5 rounded-full font-bold">
-                            ✨ AI Pick
-                        </div>
-                    )}
-                    <p className="text-xs text-gray-500 mb-1">AI Model</p>
-                    {aiNum > 0 ? (
-                        <>
-                            <p className="text-base font-bold text-vault-accent">${aiNum.toLocaleString()}</p>
-                            <p className="text-xs text-gray-500 mt-1">+{aiAbove}% above</p>
-                            <div className="mt-1.5 text-xs bg-blue-900/20 rounded px-1.5 py-0.5 text-blue-400">
-                                ML Optimized
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <p className="text-base font-bold text-gray-500">—</p>
-                            <p className="text-xs text-gray-600 mt-1">Start AI service</p>
-                        </>
-                    )}
-                </div>
-            </div>
+        <div style={{ background: "#fff", border: "1px solid #e8ddd0", borderRadius: 8, padding: "7px 12px", fontSize: 11, fontFamily: "'DM Mono', monospace", boxShadow: "0 4px 12px rgba(61,31,10,0.1)" }}>
+            <p style={{ color: "#9b8677", fontSize: 10, marginBottom: 2 }}>{payload[0].payload.time}</p>
+            <p style={{ color: chartColor, fontWeight: 500 }}>${payload[0].value.toLocaleString()}</p>
         </div>
     );
 };
-
-const PriceChart = ({ priceHistory, stats }) => {
-    if (priceHistory.length < 2) {
-        return (
-            <div className="h-28 flex items-center justify-center border border-dashed border-vault-border rounded-lg">
-                <p className="text-xs text-gray-600">
-                    Waiting for price data... ({priceHistory.length}/2 readings)
-                </p>
-            </div>
-        );
-    }
-
-    const isUp = stats.direction === "up";
-    const chartColor = isUp ? "#3fb950" : "#f85149";
-
-    // Custom tooltip
-    const CustomTooltip = ({ active, payload }) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="bg-vault-card border border-vault-border rounded-lg px-3 py-2 text-xs shadow-lg">
-                    <p className="text-gray-400">{payload[0].payload.time}</p>
-                    <p className="font-bold" style={{ color: chartColor }}>
-                        ${payload[0].value.toLocaleString()}
-                    </p>
-                </div>
-            );
-        }
-        return null;
-    };
-
-    return (
-        <div>
-            {/* Stats bar */}
-            <div className="flex justify-between text-xs mb-2 px-1">
-                <span className="text-gray-500">
-                    H: <span className="text-white font-semibold">${parseFloat(stats.high).toLocaleString()}</span>
-                </span>
-                <span className={`font-bold ${isUp ? "text-vault-green" : "text-vault-red"}`}>
-                    {isUp ? "▲" : "▼"} {Math.abs(parseFloat(stats.change))}%
-                </span>
-                <span className="text-gray-500">
-                    L: <span className="text-white font-semibold">${parseFloat(stats.low).toLocaleString()}</span>
-                </span>
-            </div>
-
-            {/* Chart */}
-            <div className="h-28">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={priceHistory} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                        <defs>
-                            <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={chartColor} stopOpacity={0.25} />
-                                <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
-                            </linearGradient>
-                        </defs>
-                        <XAxis
-                            dataKey="time"
-                            tick={{ fontSize: 9, fill: "#6e7681" }}
-                            tickLine={false}
-                            axisLine={false}
-                            interval="preserveStartEnd"
-                        />
-                        <YAxis
-                            domain={["auto", "auto"]}
-                            tick={{ fontSize: 9, fill: "#6e7681" }}
-                            tickLine={false}
-                            axisLine={false}
-                            width={55}
-                            tickFormatter={(v) => `$${v.toLocaleString()}`}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Area
-                            type="monotone"
-                            dataKey="price"
-                            stroke={chartColor}
-                            strokeWidth={2}
-                            fill="url(#priceGradient)"
-                            dot={false}
-                            activeDot={{ r: 3, fill: chartColor }}
-                        />
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
-        </div>
-    );
-};
-
-// ─────────────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────────────
 
 export default function StrategyMonitor({ strategyData, aiRecommendedStrike }) {
-    const { currentPrice, strikePrice, collateralRatio, isHighVol } = strategyData;
+    const { currentPrice, strikePrice, isHighVol } = strategyData;
     const { priceHistory, stats } = usePriceHistory(currentPrice);
+    const cardRef = useRef(null);
+    useCardHover(cardRef);
 
-    // Multiplier info
-    const multiplierText = isHighVol ? "+20%" : "+10%";
-    const multiplierLabel = isHighVol ? "High Vol Mode" : "Low Vol Mode";
-    const collateralText = isHighVol ? "150%" : "110%";
-
-    // Live source indicator
     const priceNum = parseFloat(currentPrice);
-    const isValidPrice = priceNum > 100; // sanity check
+    const isValidPrice = priceNum > 100;
+    const isUp = stats.direction === "up";
+    const chartColor = isUp ? "#2d6a4f" : "#b85c38";
 
     return (
-        <div className="bg-vault-card border border-vault-border rounded-xl p-5">
-
-            {/* ── Header ── */}
-            <div className="flex justify-between items-start mb-4">
+        <div ref={cardRef} className="card" style={{ padding: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
-                    <h2 className="text-lg font-bold text-white">🎯 Strategy Monitor</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Live market conditions</p>
+                    <h2 className="heading" style={{ fontSize: 17 }}>Strategy Monitor</h2>
+                    <p style={{ fontSize: 11, color: "#9b8677", marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>Live market conditions</p>
                 </div>
-                <div className="flex items-center gap-1.5 bg-vault-bg border border-vault-border rounded-full px-2.5 py-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-vault-green animate-pulse" />
-                    <span className="text-xs text-gray-400">Binance Live</span>
+                <div className={isHighVol ? "vol-high" : "vol-low"} style={{ fontSize: 10, padding: "3px 9px" }}>
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: isHighVol ? "#b85c38" : "#2d6a4f", display: "inline-block", flexShrink: 0 }} />
+                    {isHighVol ? "HIGH VOL" : "LOW VOL"}
                 </div>
             </div>
 
-            {/* ── Volatility Badge ── */}
-            <div className="mb-4">
-                <VolatilityBadge isHighVol={isHighVol} />
+            {/* Price + mini chart */}
+            <div style={{ background: "#faf7f2", border: "1px solid #e8ddd0", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div>
+                        <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2 }}>ETH / USD</p>
+                        <p className="stat-number" style={{ fontSize: 22, color: "#1e0e04" }}>{isValidPrice ? `$${priceNum.toLocaleString()}` : "Loading…"}</p>
+                    </div>
+                    {priceHistory.length >= 2 && (
+                        <div style={{ textAlign: "right" }}>
+                            <p style={{ fontSize: 13, fontFamily: "'DM Mono', monospace", fontWeight: 500, color: chartColor }}>{isUp ? "▲" : "▼"} {Math.abs(parseFloat(stats.change))}%</p>
+                            <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>H: ${parseFloat(stats.high).toLocaleString()} · L: ${parseFloat(stats.low).toLocaleString()}</p>
+                        </div>
+                    )}
+                </div>
+                {priceHistory.length >= 2 ? (
+                    <div style={{ height: 64 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={priceHistory} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+                                <defs>
+                                    <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%"   stopColor={chartColor} stopOpacity={0.15} />
+                                        <stop offset="100%" stopColor={chartColor} stopOpacity={0}    />
+                                    </linearGradient>
+                                </defs>
+                                <XAxis dataKey="time" hide />
+                                <YAxis domain={["auto","auto"]} hide />
+                                <Tooltip content={p => <ChartTip {...p} chartColor={chartColor} />} />
+                                <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={1.5} fill="url(#pg)" dot={false} activeDot={{ r: 3, fill: chartColor, strokeWidth: 0 }} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                ) : (
+                    <div style={{ height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <p style={{ fontSize: 10, color: "#c4b5a8", fontFamily: "'DM Sans', sans-serif" }}>Collecting data… ({priceHistory.length}/2)</p>
+                    </div>
+                )}
             </div>
 
-            {/* ── Price Chart ── */}
-            <div className="mb-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-semibold">
-                    ETH Price History
-                </p>
-                <PriceChart priceHistory={priceHistory} stats={stats} />
-            </div>
-
-            {/* ── Data Rows ── */}
-            <div className="space-y-0">
-
-                <DataRow
-                    label="ETH Price"
-                    sublabel="Binance → MockV3Aggregator"
-                    value={isValidPrice ? `$${priceNum.toLocaleString()}` : "Loading..."}
-                    valueColor="text-vault-accent"
-                />
-
-                <DataRow
-                    label="Rule-Based Strike"
-                    sublabel="StrategyManager contract"
-                    value={strikePrice ? `$${parseFloat(strikePrice).toLocaleString()}` : "—"}
-                    valueColor="text-yellow-400"
-                />
-
-                <DataRow
-                    label="AI Strike"
-                    sublabel="Python ML model"
+            <div>
+                <DataRow label="Rule-Based Strike" sub="StrategyManager" value={strikePrice ? `$${parseFloat(strikePrice).toLocaleString()}` : "—"} color="#8a6020" />
+                <DataRow label="AI Strike" sub="Python ML model"
                     value={aiRecommendedStrike ? `$${parseFloat(aiRecommendedStrike).toLocaleString()}` : "—"}
-                    valueColor={aiRecommendedStrike ? "text-vault-accent" : "text-gray-500"}
-                    badge={
-                        aiRecommendedStrike ? (
-                            <span className="text-xs bg-blue-900/30 text-blue-400 border border-blue-700/30
-                px-1.5 py-0.5 rounded-full">
-                                AI
-                            </span>
-                        ) : null
-                    }
+                    color={aiRecommendedStrike ? "#2d5986" : "#c4b5a8"}
+                    badge={aiRecommendedStrike ? <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(45,89,134,0.1)", border: "1px solid rgba(45,89,134,0.2)", color: "#2d5986", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>AI</span> : null}
                 />
-
-                <DataRow
-                    label="Collateral Ratio"
-                    sublabel={isHighVol ? "Higher — volatile market" : "Standard — calm market"}
-                    value={collateralText}
-                    valueColor="text-white"
+                <DataRow label="Collateral Ratio" value={isHighVol ? "150%" : "110%"} />
+                <DataRow label="Strike Multiplier" value={isHighVol ? "+20%" : "+10%"} color={isHighVol ? "#b85c38" : "#2d6a4f"}
+                    badge={<span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: isHighVol ? "rgba(184,92,56,0.08)" : "rgba(45,106,79,0.08)", border: isHighVol ? "1px solid rgba(184,92,56,0.2)" : "1px solid rgba(45,106,79,0.2)", color: isHighVol ? "#b85c38" : "#2d6a4f", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 9 }}>{isHighVol ? "High Vol" : "Low Vol"}</span>}
                 />
-
-                <DataRow
-                    label="Strike Multiplier"
-                    value={multiplierText}
-                    valueColor={isHighVol ? "text-vault-red" : "text-vault-green"}
-                    badge={
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full border
-              ${isHighVol
-                                ? "bg-red-900/20 text-red-400 border-red-700/30"
-                                : "bg-green-900/20 text-green-400 border-green-700/30"
-                            }`}>
-                            {multiplierLabel}
-                        </span>
-                    }
-                />
-
             </div>
 
-            {/* ── Strike Comparison Card ── */}
-            <StrikeComparison
-                ruleBased={strikePrice}
-                aiStrike={aiRecommendedStrike}
-                currentPrice={currentPrice}
-            />
-
-            {/* ── Footer note ── */}
-            <p className="text-xs text-gray-600 mt-3 text-center">
-                Updates every 5s from contract · Price feed: Binance API
-            </p>
-
+            {strikePrice && currentPrice && (
+                <div style={{ marginTop: 12, background: "#faf7f2", border: "1px solid #e8ddd0", borderRadius: 10, padding: "10px 12px" }}>
+                    <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Strike Comparison</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div style={{ background: "rgba(201,148,58,0.06)", border: "1px solid rgba(201,148,58,0.18)", borderRadius: 8, padding: "10px", textAlign: "center" }}>
+                            <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>Rule-Based</p>
+                            <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, fontWeight: 500, color: "#8a6020" }}>${parseFloat(strikePrice).toLocaleString()}</p>
+                            <p style={{ fontSize: 10, color: "#c4b5a8", marginTop: 3 }}>+{(((parseFloat(strikePrice)-parseFloat(currentPrice))/parseFloat(currentPrice))*100).toFixed(1)}%</p>
+                        </div>
+                        <div style={{ background: aiRecommendedStrike ? "rgba(45,89,134,0.06)" : "rgba(0,0,0,0.02)", border: aiRecommendedStrike ? "1px solid rgba(45,89,134,0.18)" : "1px solid #e8ddd0", borderRadius: 8, padding: "10px", textAlign: "center", position: "relative" }}>
+                            {aiRecommendedStrike && (
+                                <div style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg,#c9943a,#b8822a)", color: "#fff", fontSize: 9, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>✦ AI Pick</div>
+                            )}
+                            <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>AI Model</p>
+                            {aiRecommendedStrike ? (
+                                <>
+                                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, fontWeight: 500, color: "#2d5986" }}>${parseFloat(aiRecommendedStrike).toLocaleString()}</p>
+                                    <p style={{ fontSize: 10, color: "#c4b5a8", marginTop: 3 }}>+{(((parseFloat(aiRecommendedStrike)-parseFloat(currentPrice))/parseFloat(currentPrice))*100).toFixed(1)}%</p>
+                                </>
+                            ) : <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, color: "#c4b5a8" }}>—</p>}
+                        </div>
+                    </div>
+                </div>
+            )}
+            <p style={{ textAlign: "center", marginTop: 10, fontSize: 10, color: "#c4b5a8", fontFamily: "'DM Sans', sans-serif" }}>Updates every 5s · Binance API</p>
         </div>
     );
 }
