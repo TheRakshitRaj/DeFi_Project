@@ -1,179 +1,130 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { gsap } from "gsap";
+import { useCardHover } from "../App";
 import { useAIStrategy } from "../hooks/useAIStrategy";
 import { getVaultContract } from "../utils/contractHelpers";
-import { ethers } from "ethers";
 
-// Confidence bar component
-const ConfidenceBar = ({ value }) => {
-    const pct = Math.round(value * 100);
-    const color = pct >= 75 ? "#3fb950" : pct >= 55 ? "#d29922" : "#f85149";
+const ConfBar = ({ value }) => {
+    const pct   = Math.round(value * 100);
+    const color = pct >= 75 ? "#2d6a4f" : pct >= 55 ? "#8a6020" : "#b85c38";
+    const bg    = pct >= 75 ? "rgba(45,106,79,0.9)" : pct >= 55 ? "rgba(138,96,32,0.9)" : "rgba(184,92,56,0.9)";
     return (
-        <div className="w-full">
-            <div className="flex justify-between mb-1">
-                <span className="text-xs text-gray-400">Confidence</span>
-                <span className="text-xs font-bold" style={{ color }}>{pct}%</span>
+        <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase" }}>Confidence</span>
+                <span style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", fontWeight: 500, color }}>{pct}%</span>
             </div>
-            <div className="w-full bg-vault-bg rounded-full h-2">
-                <div
-                    className="h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%`, backgroundColor: color }}
-                />
-            </div>
+            <div className="conf-track"><div className="conf-fill" style={{ width: `${pct}%`, background: bg }} /></div>
         </div>
     );
 };
 
-// Risk badge
 const RiskBadge = ({ level }) => {
-    const styles = {
-        LOW: "bg-green-900/40 text-green-400 border-green-700/40",
-        MEDIUM: "bg-yellow-900/40 text-yellow-400 border-yellow-700/40",
-        HIGH: "bg-red-900/40 text-red-400 border-red-700/40"
-    };
-    return (
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${styles[level] || styles.MEDIUM}`}>
-            {level} RISK
-        </span>
-    );
+    const cfg = { LOW: { bg: "rgba(45,106,79,0.08)", bd: "rgba(45,106,79,0.2)", c: "#2d6a4f" }, MEDIUM: { bg: "rgba(138,96,32,0.08)", bd: "rgba(138,96,32,0.2)", c: "#8a6020" }, HIGH: { bg: "rgba(184,92,56,0.08)", bd: "rgba(184,92,56,0.2)", c: "#b85c38" } };
+    const s = cfg[level] || cfg.MEDIUM;
+    return <span style={{ background: s.bg, border: `1px solid ${s.bd}`, color: s.c, fontSize: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, padding: "3px 9px", borderRadius: 20, letterSpacing: "0.07em" }}>{level} RISK</span>;
 };
 
 export default function AIStrategyPanel({ currentPrice, strategyData, onStrikeUpdate }) {
-    // Derive volatility from strategy data collateral ratio as a proxy
-    // In a real system this would come from a rolling std calculation
     const volatility = strategyData?.isHighVol ? 0.055 : 0.025;
-
     const { aiData, refetch } = useAIStrategy(currentPrice, volatility, onStrikeUpdate);
     const [txStatus, setTxStatus] = useState(null);
     const [applying, setApplying] = useState(false);
+    const cardRef = useRef(null);
+    const btnRef  = useRef(null);
+    useCardHover(cardRef);
 
-    // Send the AI-recommended strike to the smart contract
-    const applyToContract = async () => {
+    const apply = async () => {
         if (!aiData.recommended_strike) return;
-        setApplying(true);
-        setTxStatus(null);
+        gsap.fromTo(btnRef.current, { scale: 0.96 }, { scale: 1, duration: 0.3, ease: "back.out(2)" });
+        setApplying(true); setTxStatus(null);
         try {
             const vault = await getVaultContract(true);
-            // Convert strike price to the format the contract expects (USD * 1e8)
-            const strikePriceOnChain = Math.round(aiData.recommended_strike * 1e8);
-            // Call writeCoveredCallWithStrike — the new overloaded function
-            const tx = await vault.writeCoveredCallWithStrike(
-                strikePriceOnChain,
-                604800 // 7 days expiry in seconds
-            );
+            const tx    = await vault.writeCoveredCallWithStrike(Math.round(aiData.recommended_strike * 1e8), 604800);
             await tx.wait();
-            setTxStatus({ success: true, msg: `✅ Covered call written at $${aiData.recommended_strike}` });
+            setTxStatus({ ok: true, msg: `✅ Covered call written at $${aiData.recommended_strike}` });
         } catch (err) {
-            setTxStatus({ success: false, msg: `❌ ${err.reason || err.message}` });
-        } finally {
-            setApplying(false);
-        }
+            setTxStatus({ ok: false, msg: `❌ ${err.reason || err.message}` });
+        } finally { setApplying(false); }
     };
 
     return (
-        <div className="bg-vault-card border border-vault-border rounded-xl p-6">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-5">
+        <div ref={cardRef} className="card" style={{ padding: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
                 <div>
-                    <h2 className="text-xl font-bold text-white">🤖 AI Strategy Engine</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Random Forest Model · Updates every 30s</p>
+                    <h2 className="heading" style={{ fontSize: 17 }}>AI Strategy Engine</h2>
+                    <p style={{ fontSize: 11, color: "#9b8677", marginTop: 2, fontFamily: "'DM Sans', sans-serif" }}>Random Forest · updates every 30s</p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${aiData.serviceOnline ? "bg-vault-green animate-pulse" : "bg-vault-red"}`} />
-                    <span className={`text-xs font-semibold ${aiData.serviceOnline ? "text-vault-green" : "text-vault-red"}`}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, fontSize: 16, background: aiData.serviceOnline ? "rgba(45,106,79,0.08)" : "rgba(184,92,56,0.08)", border: aiData.serviceOnline ? "1px solid rgba(45,106,79,0.18)" : "1px solid rgba(184,92,56,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>🤖</div>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 20, background: aiData.serviceOnline ? "#e8f5ef" : "#fdf0eb", border: aiData.serviceOnline ? "1px solid rgba(45,106,79,0.2)" : "1px solid rgba(184,92,56,0.2)", fontSize: 10, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: aiData.serviceOnline ? "#2d6a4f" : "#b85c38", letterSpacing: "0.07em" }}>
+                        <span className={aiData.serviceOnline ? "live-dot" : "live-dot live-dot-red"} style={{ width: 5, height: 5 }} />
                         {aiData.serviceOnline ? "ONLINE" : "OFFLINE"}
                     </span>
                 </div>
             </div>
 
-            {/* Offline state */}
             {!aiData.serviceOnline && (
-                <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-4 mb-4">
-                    <p className="text-red-400 text-sm font-semibold mb-1">AI Service Not Running</p>
-                    <p className="text-gray-400 text-xs">Start the Python API to enable AI recommendations:</p>
-                    <code className="block text-xs text-vault-yellow mt-2 bg-vault-bg p-2 rounded">
-                        cd ai-strategy && source venv/bin/activate && python3 api.py
-                    </code>
-                    <button onClick={refetch} className="mt-3 text-xs text-vault-accent hover:underline">
-                        Retry connection →
-                    </button>
+                <div style={{ background: "#fdf0eb", border: "1px solid rgba(184,92,56,0.2)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                    <p style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, color: "#b85c38", marginBottom: 4 }}>AI Service Not Running</p>
+                    <p style={{ fontSize: 11, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>Start the Python API:</p>
+                    <div className="code-block" style={{ fontSize: 11 }}>cd ai-strategy && source venv/bin/activate && python3 api.py</div>
+                    <button onClick={refetch} style={{ marginTop: 10, fontSize: 11, color: "#c9943a", background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: 0 }}>Retry connection →</button>
                 </div>
             )}
 
-            {/* Loading state */}
             {aiData.loading && (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
-                    <div className="w-4 h-4 border-2 border-vault-accent border-t-transparent rounded-full animate-spin" />
-                    Fetching AI recommendation...
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0", color: "#9b8677", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
+                    <span style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid #e8ddd0", borderTopColor: "#c9943a", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+                    Fetching AI recommendation…
                 </div>
             )}
 
-            {/* Main prediction display */}
             {aiData.serviceOnline && !aiData.loading && aiData.recommended_strike && (
                 <>
-                    {/* Input summary */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="bg-vault-bg border border-vault-border rounded-lg p-3">
-                            <p className="text-xs text-gray-500 mb-1">Current ETH Price</p>
-                            <p className="text-lg font-bold text-vault-accent">${Number(currentPrice).toLocaleString()}</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                        <div style={{ background: "#faf7f2", border: "1px solid #e8ddd0", borderRadius: 10, padding: "10px 12px" }}>
+                            <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 3 }}>ETH Price</p>
+                            <p className="stat-number" style={{ fontSize: 16, color: "#2d5986" }}>${Number(currentPrice).toLocaleString()}</p>
                         </div>
-                        <div className="bg-vault-bg border border-vault-border rounded-lg p-3">
-                            <p className="text-xs text-gray-500 mb-1">Market Volatility</p>
-                            <p className="text-lg font-bold text-vault-yellow">{(volatility * 100).toFixed(1)}%</p>
+                        <div style={{ background: "#faf7f2", border: "1px solid #e8ddd0", borderRadius: 10, padding: "10px 12px" }}>
+                            <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 3 }}>Volatility</p>
+                            <p className="stat-number" style={{ fontSize: 16, color: "#8a6020" }}>{(volatility*100).toFixed(1)}%</p>
                         </div>
                     </div>
 
-                    {/* AI Recommendation */}
-                    <div className="bg-gradient-to-br from-blue-900/20 to-vault-bg border border-vault-accent/30 rounded-xl p-4 mb-4">
-                        <div className="flex justify-between items-start mb-3">
+                    <div style={{ background: "linear-gradient(135deg, rgba(201,148,58,0.07), rgba(201,148,58,0.02))", border: "1px solid rgba(201,148,58,0.22)", borderRadius: 12, padding: "14px 16px", marginBottom: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                             <div>
-                                <p className="text-xs text-gray-400 mb-1">Recommended Strike Price</p>
-                                <p className="text-3xl font-bold text-vault-accent">
-                                    ${aiData.recommended_strike.toLocaleString()}
-                                </p>
+                                <p style={{ fontSize: 10, color: "#9b8677", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>Recommended Strike</p>
+                                <p className="stat-number" style={{ fontSize: 28, color: "#3d1f0a", lineHeight: 1 }}>${aiData.recommended_strike.toLocaleString()}</p>
                             </div>
                             <RiskBadge level={aiData.risk_level || "MEDIUM"} />
                         </div>
-
-                        <div className="flex justify-between text-sm mb-4">
-                            <span className="text-gray-400">
-                                Multiplier: <span className="text-white font-semibold">{aiData.multiplier?.toFixed(3)}x</span>
-                            </span>
-                            <span className="text-gray-400">
-                                vs rule-based: <span className="text-vault-yellow font-semibold">
-                                    ${strategyData?.isHighVol
-                                        ? (Number(currentPrice) * 1.20).toFixed(0)
-                                        : (Number(currentPrice) * 1.10).toFixed(0)}
-                                </span>
-                            </span>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 12 }}>
+                            <span style={{ color: "#9b8677", fontFamily: "'DM Sans', sans-serif" }}>Multiplier: <span style={{ color: "#3d1f0a", fontFamily: "'DM Mono', monospace", fontWeight: 500 }}>{aiData.multiplier?.toFixed(3)}x</span></span>
+                            <span style={{ color: "#9b8677", fontFamily: "'DM Sans', sans-serif" }}>vs rule: <span style={{ color: "#8a6020", fontFamily: "'DM Mono', monospace", fontWeight: 500 }}>${strategyData?.isHighVol ? (Number(currentPrice)*1.20).toFixed(0) : (Number(currentPrice)*1.10).toFixed(0)}</span></span>
                         </div>
-
-                        <ConfidenceBar value={aiData.confidence || 0} />
+                        <ConfBar value={aiData.confidence || 0} />
                     </div>
 
-                    {/* Apply to contract button */}
-                    <button
-                        onClick={applyToContract}
-                        disabled={applying}
-                        className="w-full bg-vault-accent text-vault-bg font-bold py-3 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity mb-3"
-                    >
+                    <button ref={btnRef} onClick={apply} disabled={applying} className="btn-gold" style={{ width: "100%", padding: "12px", fontSize: 14, marginBottom: 10 }}>
                         {applying ? (
-                            <span className="flex items-center justify-center gap-2">
-                                <div className="w-4 h-4 border-2 border-vault-bg border-t-transparent rounded-full animate-spin" />
-                                Writing to contract...
+                            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <span style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "transparent", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+                                Writing to contract…
                             </span>
-                        ) : (
-                            `⚡ Apply AI Strike ($${aiData.recommended_strike}) to Vault`
-                        )}
+                        ) : `⚡ Apply AI Strike ($${aiData.recommended_strike}) to Vault`}
                     </button>
 
-                    {/* Transaction status */}
                     {txStatus && (
-                        <div className={`text-sm p-3 rounded-lg ${txStatus.success ? "bg-green-900/20 text-vault-green border border-green-700/30" : "bg-red-900/20 text-vault-red border border-red-700/30"}`}>
+                        <div style={{ padding: "10px 14px", borderRadius: 10, fontSize: 12, fontFamily: "'DM Mono', monospace", background: txStatus.ok ? "#e8f5ef" : "#fdf0eb", border: txStatus.ok ? "1px solid rgba(45,106,79,0.2)" : "1px solid rgba(184,92,56,0.2)", color: txStatus.ok ? "#2d6a4f" : "#b85c38" }}>
                             {txStatus.msg}
                         </div>
                     )}
                 </>
             )}
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
     );
 }
